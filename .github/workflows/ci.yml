@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -D warnings
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rust stable installieren
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      # sshd und ssh-keygen für die Tests. Ohne sie würden sich die Tests selbst
+      # überspringen und die CI wäre grün, ohne etwas zu prüfen.
+      - name: OpenSSH-Server installieren
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y openssh-server
+          sudo mkdir -p /run/sshd
+          test -x /usr/sbin/sshd
+          test -x /usr/bin/ssh-keygen
+
+      - name: Format prüfen
+        run: cargo fmt --check
+
+      - name: Clippy
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Tests
+        run: cargo test
+
+      - name: Release-Build
+        run: cargo build --release
