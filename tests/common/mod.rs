@@ -1,0 +1,228 @@
+//! Startet einen echten OpenSSH-`sshd` auf localhost.
+//! Gibt `None` zurück, wenn `sshd` oder `ssh-keygen` fehlen; Tests überspringen sich dann.
+//!
+//! Erzeugt außerdem Test-Schlüssel: zwei autorisierte (ohne und mit Passphrase)
+//! und einen nicht autorisierten.
+
+#![allow(dead_code)] // nicht jeder Test nutzt alles
+
+use std::net::TcpListener;
+use std::path::{Path, PathBuf};
+use std::process::{Child, Command, Stdio};
+use std::time::{Duration, Instant};
+
+pub const KEY_PASSPHRASE: &str = "hunter2";
+
+#[derive(Clone, Copy)]
+pub struct Options {
+    pub pubkey_auth: bool,
+    /// `Subsystem sftp` eintragen (setzt installierten `sftp-server` voraus).
+    pub sftp: bool,
+    /// Wert für `RekeyLimit` (z.B. `"64K"`): der Server wechselt dann selbst die Schlüssel.
+    pub rekey_limit: Option<&'static str>,
+}
+
+impl Default for Options {
+    fn default() -> Self {
+        Self {
+            pubkey_auth: true,
+            sftp: true,
+            rekey_limit: None,
+        }
+    }
+}
+
+pub struct TestSshd {
+    child: Child,
+    pub dir: PathBuf,
+    pub port: u16,
+    pub fingerprint: String,
+    /// Benutzer, mit dem sshd läuft (nur dieser kann sich anmelden).
+    pub user: String,
+    /// Autorisierter Key ohne Passphrase (PEM).
+    pub key_plain: String,
+    /// Autorisierter Key mit Passphrase [`KEY_PASSPHRASE`] (PEM).
+    pub key_encrypted: String,
+    /// Gültiger Key, der nicht in `authorized_keys` steht (PEM).
+    pub key_unauthorized: String,
+}
+
+fn find(candidates: &[&str]) -> Option<PathBuf> {
+    candidates
+        .iter()
+        .map(Path::new)
+        .find(|p| p.exists())
+        .map(Path::to_path_buf)
+}
+
+fn keygen(keygen: &Path, args: &[&str], file: &Path) -> Option<()> {
+    let ok = Command::new(keygen)
+        .args(["-q", "-t", "ed25519", "-f"])
+        .arg(file)
+        .args(args)
+        .status()
+        .ok()?
+        .success();
+    ok.then_some(())
+}
+
+impl TestSshd {
+    pub fn start() -> Option<Self> {
+        Self::start_with(Options::default())
+    }
+
+    pub fn start_with(opts: Options) -> Option<Self> {
+        let sshd = find(&["/usr/sbin/sshd", "/usr/local/sbin/sshd"])?;
+        let ssh_keygen = find(&["/usr/bin/ssh-keygen", "/usr/local/bin/ssh-keygen"])?;
+
+        let port = TcpListener::bind("127.0.0.1:0")
+            .ok()?
+            .local_addr()
+            .ok()?
+            .port();
+        let dir =
+            std::env::temp_dir().join(format!("simple-ssh-lib-sshd-{}-{port}", std::process::id()));
+        std::fs::create_dir_all(&dir).ok()?;
+        let _ = std::fs::create_dir_all("/run/sshd");
+
+        let host = dir.join("host_ed25519");
+        keygen(&ssh_keygen, &["-N", ""], &host)?;
+        let out = Command::new(&ssh_keygen)
+            .arg("-lf")
+            .arg(dir.join("host_ed25519.pub"))
+            .output()
+            .ok()?;
+        let fingerprint = String::from_utf8_lossy(&out.stdout)
+            .split_whitespace()
+            .nth(1)?
+            .to_string();
+
+        let plain = dir.join("user_plain");
+        let encrypted = dir.join("user_encrypted");
+        let unauthorized = dir.join("user_unauthorized");
+        keygen(&ssh_keygen, &["-N", ""], &plain)?;
+        keygen(&ssh_keygen, &["-N", KEY_PASSPHRASE, "-a", "4"], &encrypted)?;
+        keygen(&ssh_keygen, &["-N", ""], &unauthorized)?;
+        let mut authorized = std::fs::read_to_string(dir.join("user_plain.pub")).ok()?;
+        authorized += &std::fs::read_to_string(dir.join("user_encrypted.pub")).ok()?;
+        let authorized_path = dir.join("authorized_keys");
+        std::fs::write(&authorized_path, authorized).ok()?;
+
+        let sftp_line = if opts.sftp {
+            let server = find(&[
+                "/usr/lib/openssh/sftp-server",
+                "/usr/libexec/openssh/sftp-server",
+                "/usr/lib/ssh/sftp-server",
+                "/usr/libexec/sftp-server",
+            ])?;
+            format!("Subsystem sftp {}\n", server.display())
+        } else {
+            String::new()
+        };
+
+        let rekey_line = opts
+            .rekey_limit
+            .map_or(String::new(), |l| format!("RekeyLimit {l}\n"));
+
+        let user = String::from_utf8(Command::new("id").arg("-un").output().ok()?.stdout)
+            .ok()?
+            .trim()
+            .to_string();
+
+        let config = dir.join("sshd_config");
+        std::fs::write(
+            &config,
+            format!(
+                "Port {port}\nListenAddress 127.0.0.1\nHostKey {}\nPidFile {}\nUsePAM no\n\
+                 StrictModes no\nPermitRootLogin yes\nPasswordAuthentication no\n\
+                 KbdInteractiveAuthentication no\nPubkeyAuthentication {}\n\
+                 AuthorizedKeysFile {}\nAllowUsers {user}\n{sftp_line}{rekey_line}",
+                host.display(),
+                dir.join("sshd.pid").display(),
+                if opts.pubkey_auth { "yes" } else { "no" },
+                authorized_path.display(),
+            ),
+        )
+        .ok()?;
+
+        let child = Command::new(&sshd)
+            .args(["-D", "-e", "-f"])
+            .arg(&config)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .ok()?;
+        let sshd = Self {
+            child,
+            port,
+            fingerprint,
+            user,
+            key_plain: std::fs::read_to_string(&plain).ok()?,
+            key_encrypted: std::fs::read_to_string(&encrypted).ok()?,
+            key_unauthorized: std::fs::read_to_string(&unauthorized).ok()?,
+            dir,
+        };
+
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while Instant::now() < deadline {
+            if std::net::TcpStream::connect(("127.0.0.1", port)).is_ok() {
+                return Some(sshd);
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        None
+    }
+
+    /// Pfad des autorisierten Schlüssels ohne Passphrase.
+    pub fn key_plain_path(&self) -> PathBuf {
+        self.dir.join("user_plain")
+    }
+
+    /// Pfad des autorisierten Schlüssels mit Passphrase [`KEY_PASSPHRASE`].
+    pub fn key_encrypted_path(&self) -> PathBuf {
+        self.dir.join("user_encrypted")
+    }
+
+    /// Pfad eines gültigen, aber nicht autorisierten Schlüssels.
+    pub fn key_unauthorized_path(&self) -> PathBuf {
+        self.dir.join("user_unauthorized")
+    }
+
+    pub fn addr(&self) -> String {
+        format!("127.0.0.1:{}", self.port)
+    }
+}
+
+impl Drop for TestSshd {
+    fn drop(&mut self) {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+        let _ = std::fs::remove_dir_all(&self.dir);
+    }
+}
+
+/// Eigenes Arbeitsverzeichnis für Tests, das beim Drop gelöscht wird.
+pub struct Scratch {
+    pub dir: PathBuf,
+}
+
+impl Scratch {
+    pub fn new(name: &str) -> Self {
+        let dir =
+            std::env::temp_dir().join(format!("simple-ssh-lib-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("create scratch dir");
+        Self { dir }
+    }
+
+    /// Pfad innerhalb des Verzeichnisses als `String` (so wie ihn SFTP erwartet).
+    pub fn path(&self, name: &str) -> String {
+        self.dir.join(name).to_string_lossy().into_owned()
+    }
+}
+
+impl Drop for Scratch {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.dir);
+    }
+}

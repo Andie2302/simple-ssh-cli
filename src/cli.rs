@@ -1,0 +1,79 @@
+//! Kommandozeilen-Definition.
+
+use std::path::PathBuf;
+
+use clap::{Args, Parser, Subcommand};
+
+use crate::target::Target;
+
+/// SSH-Client auf Basis von simple-ssh-lib (nur ed25519, Public-Key-Anmeldung).
+#[derive(Debug, Parser)]
+#[command(
+    name = "simple-ssh-cli",
+    version,
+    about = "SSH-Client auf Basis von simple-ssh-lib (nur ed25519, nur Public-Key-Anmeldung)",
+    max_term_width = 100
+)]
+pub struct Cli {
+    #[command(flatten)]
+    pub global: GlobalArgs,
+
+    #[command(subcommand)]
+    pub command: Command,
+}
+
+/// Optionen, die für alle Befehle gelten (auch hinter dem Befehl angebbar).
+#[derive(Debug, Clone, Args)]
+pub struct GlobalArgs {
+    /// Privater Schlüssel (ed25519, OpenSSH-Format) [Standard: ~/.ssh/id_ed25519]
+    #[arg(short = 'i', long, global = true, value_name = "DATEI")]
+    pub identity: Option<PathBuf>,
+
+    /// Datei mit der Passphrase des Schlüssels (erste Zeile). Alternativ SSH_KEY_PASSPHRASE
+    /// oder Rückfrage im Terminal
+    #[arg(long, global = true, value_name = "DATEI")]
+    pub passphrase_file: Option<PathBuf>,
+
+    /// known_hosts-Datei dieses Programms [Standard: ~/.config/simple-ssh-cli/known_hosts]
+    #[arg(long, global = true, value_name = "DATEI")]
+    pub known_hosts: Option<PathBuf>,
+
+    /// Unbekannte Server nach erfolgreicher Anmeldung in known_hosts speichern
+    /// (ein geänderter Key wird nie akzeptiert)
+    #[arg(long, global = true)]
+    pub accept_new: bool,
+
+    /// Erwarteter Fingerprint des Servers; hat Vorrang vor known_hosts, die Datei bleibt unberührt
+    #[arg(long, global = true, value_name = "SHA256:...")]
+    pub fingerprint: Option<String>,
+
+    /// Frist in Sekunden für Verbindungsaufbau, Handshake und Anmeldung
+    #[arg(
+        long,
+        global = true,
+        value_name = "SEKUNDEN",
+        default_value_t = 30,
+        value_parser = clap::value_parser!(u64).range(1..=3600)
+    )]
+    pub timeout: u64,
+
+    /// Ausführlichere Ausgabe auf stderr
+    #[arg(short, long, global = true)]
+    pub verbose: bool,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum Command {
+    /// Fingerprint des Servers anzeigen (wie `ssh-keygen -lf`), ohne ihm zu vertrauen
+    Hostkey {
+        /// [benutzer@]host[:port]
+        #[arg(value_name = "ZIEL")]
+        target: Target,
+    },
+    /// Verbindung und Anmeldung prüfen
+    Check {
+        /// [benutzer@]host[:port]
+        #[arg(value_name = "ZIEL")]
+        target: Target,
+    },
+}
