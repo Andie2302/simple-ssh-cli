@@ -12,7 +12,8 @@ use crate::target::Target;
     name = "simple-ssh-cli",
     version,
     about = "SSH-Client auf Basis von simple-ssh-lib (nur ed25519, nur Public-Key-Anmeldung)",
-    max_term_width = 100
+    max_term_width = 100,
+    after_help = "Beispiele:\n  simple-ssh-cli hostkey anna@server\n  simple-ssh-cli --accept-new check anna@server\n  simple-ssh-cli exec anna@server uname -a\n  simple-ssh-cli shell anna@server\n  simple-ssh-cli sftp anna@server get /var/log/syslog\n  simple-ssh-cli selftest anna@server --json\n\nExit-Codes: 0 ok, 1 Fehler, 2 Host-Key unbekannt, 3 Host-Key geändert, 4 Anmeldung fehlgeschlagen,\n64 falsche Bedienung; bei exec/shell der Code des Remote-Programms (128+Signal, 255 Verbindung verloren)."
 )]
 pub struct Cli {
     #[command(flatten)]
