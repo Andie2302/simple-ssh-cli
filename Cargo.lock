@@ -721,7 +721,7 @@ dependencies = [
 [[package]]
 name = "simple-ssh-lib"
 version = "0.1.0"
-source = "git+https://github.com/Andie2302/simple-ssh-lib?rev=0ce1d49ec46338af14df0102c99b3b2e15f951ec#0ce1d49ec46338af14df0102c99b3b2e15f951ec"
+source = "git+https://github.com/Andie2302/simple-ssh-lib?rev=b79833f6be97e7900582a3b5a49a9cf871fc10d2#b79833f6be97e7900582a3b5a49a9cf871fc10d2"
 dependencies = [
  "aes",
  "bcrypt-pbkdf",

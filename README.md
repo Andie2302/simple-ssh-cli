@@ -4,7 +4,7 @@ Kommandozeilenprogramm auf Basis von [simple-ssh-lib](https://github.com/Andie23
 Es soll vor allem eines: die Bibliothek **gegen echte SSH-Server** ausprobieren und prüfen –
 und nebenbei als schlanker SSH-Client taugen.
 
-> Status: Meilenstein 2 von 7. Aktuell gibt es `hostkey`, `check` und `exec`. `shell`, `sftp`
+> Status: Meilenstein 3 von 7. Aktuell gibt es `hostkey`, `check`, `exec` und `shell`. `sftp`
 > und ein eingebauter `selftest` folgen. Linux und macOS; Windows wird nicht unterstützt.
 
 ## Was die Bibliothek (und damit dieses Programm) kann – und was nicht
@@ -33,6 +33,9 @@ simple-ssh-cli check anna@server.example
 # Befehl ausführen (Ausgabe kommt live, Exit-Code wird übernommen)
 simple-ssh-cli exec anna@server.example uname -a
 simple-ssh-cli exec anna@server.example 'tail -f /var/log/syslog'
+
+# Interaktive Shell mit echtem Terminal (Beenden: `exit` oder `~.` am Zeilenanfang)
+simple-ssh-cli shell anna@server.example
 
 # Eingabe durchreichen
 tar czf - ordner | simple-ssh-cli exec anna@server.example 'tar xzf - -C /tmp'
@@ -80,6 +83,30 @@ Status meldet. Fehler vor dem Start des Befehls behalten die Codes unten. *Achtu
 Remote-Befehl selbst 1, 2, 3, 4 oder 64, ist das vom Fehler des Programms nur an der Meldung auf
 stderr zu unterscheiden (sie beginnt mit `simple-ssh-cli:`).
 
+### `shell`
+
+Interaktive Shell mit Pseudo-Terminal. Erst werden Host-Key geprüft, angemeldet und die Shell
+geöffnet; erst danach schaltet das Programm das Terminal in den Raw-Mode und stellt es am Ende
+(auch bei Fehlern, Panik, `~.` und SIGTERM/SIGHUP) wieder her. `$TERM` kommt aus der Umgebung
+(Standard `xterm-256color`), die Fenstergröße wird beim Start gesendet und bei Änderungen
+nachgeführt. Strg-C geht an den Server.
+
+Escape-Folgen gelten wie bei OpenSSH nur am Zeilenanfang und nur bei interaktivem stdin:
+
+| Eingabe | Wirkung |
+|---|---|
+| `~.` | Verbindung trennen (Exit-Code 255) |
+| `~~` | ein einzelnes `~` senden |
+| `~?` | Hilfe anzeigen |
+| `~` + anderes Zeichen | beide Zeichen unverändert senden |
+
+`--no-escape` schaltet das ab, `--escape-char <zeichen>` wählt ein anderes Zeichen. Ist stdin
+kein Terminal (`befehle | simple-ssh-cli shell …`), bleibt das Terminal unberührt; am Ende der
+Eingabe wird Strg-D gesendet, sobald die Shell ruhig ist. Exit-Code wie bei `exec`.
+
+Manuell zu prüfen (nicht automatisiert): `vim`, `top`, `less`, `htop`, `tmux`, Strg-Z/`fg`,
+Einfügen mit Bracketed Paste und die Fenstergröße in einem echten Terminalemulator.
+
 ### Passphrase
 
 Ist der Schlüssel geschützt, wird die Passphrase der Reihe nach aus `SSH_KEY_PASSPHRASE`, aus
@@ -110,9 +137,9 @@ Sie ist unabhängig von `~/.ssh/known_hosts`.
 | 64 | falsche Bedienung (Argumente) |
 | 130 | `exec` per Strg-C abgebrochen |
 | 141 | `exec`: lokales stdout wurde geschlossen |
-| 255 | `exec`: Verbindung verloren oder kein Exit-Status |
+| 255 | `exec`/`shell`: Verbindung verloren, getrennt (`~.`) oder kein Exit-Status |
 
-Bei `exec` gilt zusätzlich der Code des Remote-Befehls, siehe oben.
+Bei `exec` und `shell` gilt zusätzlich der Code des Remote-Programms, siehe oben.
 
 ## Tests
 
