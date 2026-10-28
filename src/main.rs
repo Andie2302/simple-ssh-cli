@@ -9,6 +9,7 @@ mod connect;
 mod error;
 mod hostkeys;
 mod identity;
+mod signals;
 mod target;
 
 use clap::Parser;
@@ -16,10 +17,18 @@ use clap::Parser;
 use cli::{Cli, Command};
 use error::{CliError, exit};
 
-async fn run(cli: Cli) -> Result<(), CliError> {
+/// Führt den Befehl aus und liefert den Exit-Code.
+async fn run(cli: Cli) -> Result<i32, CliError> {
     match &cli.command {
-        Command::Hostkey { target } => commands::hostkey::run(&cli.global, target).await,
-        Command::Check { target } => commands::check::run(&cli.global, target).await,
+        Command::Hostkey { target } => commands::hostkey::run(&cli.global, target)
+            .await
+            .map(|()| 0),
+        Command::Check { target } => commands::check::run(&cli.global, target).await.map(|()| 0),
+        Command::Exec {
+            target,
+            no_stdin,
+            command,
+        } => commands::exec::run(&cli.global, target, *no_stdin, command).await,
     }
 }
 
@@ -35,7 +44,7 @@ async fn real_main() -> i32 {
         }
     };
     match run(cli).await {
-        Ok(()) => 0,
+        Ok(code) => code,
         Err(e) => {
             eprintln!("simple-ssh-cli: {e}");
             e.code

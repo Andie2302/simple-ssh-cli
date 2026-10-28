@@ -4,7 +4,7 @@ Kommandozeilenprogramm auf Basis von [simple-ssh-lib](https://github.com/Andie23
 Es soll vor allem eines: die Bibliothek **gegen echte SSH-Server** ausprobieren und prüfen –
 und nebenbei als schlanker SSH-Client taugen.
 
-> Status: Meilenstein 1 von 7. Aktuell gibt es `hostkey` und `check`. `exec`, `shell`, `sftp`
+> Status: Meilenstein 2 von 7. Aktuell gibt es `hostkey`, `check` und `exec`. `shell`, `sftp`
 > und ein eingebauter `selftest` folgen. Linux und macOS; Windows wird nicht unterstützt.
 
 ## Was die Bibliothek (und damit dieses Programm) kann – und was nicht
@@ -29,6 +29,14 @@ simple-ssh-cli hostkey anna@server.example:22
 
 # Verbindung und Anmeldung prüfen
 simple-ssh-cli check anna@server.example
+
+# Befehl ausführen (Ausgabe kommt live, Exit-Code wird übernommen)
+simple-ssh-cli exec anna@server.example uname -a
+simple-ssh-cli exec anna@server.example 'tail -f /var/log/syslog'
+
+# Eingabe durchreichen
+tar czf - ordner | simple-ssh-cli exec anna@server.example 'tar xzf - -C /tmp'
+simple-ssh-cli exec anna@server.example 'cat /etc/hostname' | tr a-z A-Z
 ```
 
 Ziel ist `[benutzer@]host[:port]`; IPv6 in eckigen Klammern: `[::1]:22`. Ohne Benutzer wird
@@ -45,6 +53,32 @@ Ziel ist `[benutzer@]host[:port]`; IPv6 in eckigen Klammern: `[::1]:22`. Ohne Be
 | `-v, --verbose` | ausführlichere Ausgabe auf stderr |
 
 Die Optionen dürfen auch hinter dem Befehl stehen.
+
+### `exec`
+
+`simple-ssh-cli [OPTIONEN] exec <ziel> [--no-stdin] <befehl…>`
+
+* Die Wörter des Befehls werden wie bei `ssh` mit Leerzeichen verbunden und von der Shell des
+  Servers ausgewertet. Optionen des Programms gehören **vor** den Befehl; alles dahinter ist Teil
+  des Befehls (`--` ist erlaubt).
+* **Ausgabe live:** Remote-stdout geht an lokales stdout, Remote-stderr an lokales stderr, als
+  rohe Bytes und sobald sie ankommen (also auch `tail -f`, Fortschrittsanzeigen, Binärdaten).
+  Ein langsamer lokaler Leser bremst den Server; das Programm hält nie die ganze Ausgabe im Speicher.
+* **Eingabe live:** Ist lokales stdin kein Terminal (Pipe, Datei), wird es an den Befehl
+  weitergereicht; sein Ende ist EOF für den Befehl. Bei einem Terminal oder mit `--no-stdin` sieht
+  der Befehl sofort EOF (interaktive Programme brauchen `shell`).
+* **Host-Key zuerst:** Vor dem ersten Byte des Befehls wird der Host-Key geprüft. Bei unbekanntem
+  oder geändertem Key läuft auf dem Server nichts.
+* **Strg-C** schließt den Channel und beendet das Programm mit 130; ein vorzeitig geschlossenes
+  lokales stdout (`… | head`) beendet es still mit 141. Ob der Remote-Befehl danach weiterläuft,
+  entscheidet der Server (ohne Terminal meist: er endet beim nächsten Schreiben).
+* `--keepalive <s>` erkennt eine tote Verbindung (3 verpasste Intervalle).
+
+**Exit-Code wie bei ssh:** der Code des Remote-Befehls; endete er durch ein Signal, `128 +
+Signalnummer` (z.B. 137 für KILL); 255, wenn die Verbindung verloren ging oder der Server keinen
+Status meldet. Fehler vor dem Start des Befehls behalten die Codes unten. *Achtung:* liefert der
+Remote-Befehl selbst 1, 2, 3, 4 oder 64, ist das vom Fehler des Programms nur an der Meldung auf
+stderr zu unterscheiden (sie beginnt mit `simple-ssh-cli:`).
 
 ### Passphrase
 
@@ -68,12 +102,17 @@ Sie ist unabhängig von `~/.ssh/known_hosts`.
 
 | Code | Bedeutung |
 |---|---|
-| 0 | Erfolg |
+| 0 | Erfolg (bei `exec`: Remote-Befehl lieferte 0) |
 | 1 | allgemeiner Fehler (Verbindung, Frist, Schlüsseldatei, falsche Passphrase, …) |
 | 2 | Host-Key unbekannt |
 | 3 | Host-Key geändert oder passt nicht zu `--fingerprint` |
 | 4 | Anmeldung fehlgeschlagen |
 | 64 | falsche Bedienung (Argumente) |
+| 130 | `exec` per Strg-C abgebrochen |
+| 141 | `exec`: lokales stdout wurde geschlossen |
+| 255 | `exec`: Verbindung verloren oder kein Exit-Status |
+
+Bei `exec` gilt zusätzlich der Code des Remote-Befehls, siehe oben.
 
 ## Tests
 
@@ -83,6 +122,7 @@ cargo test
 ```
 
 Die Integrationstests starten einen eigenen `sshd` auf `127.0.0.1` und rufen das Programm auf.
+Die Bibliothek ist auf einen festen Commit gepinnt (`Cargo.toml`).
 Ohne `sshd` überspringen sie sich.
 
 ## Lizenz

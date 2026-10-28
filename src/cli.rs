@@ -57,6 +57,16 @@ pub struct GlobalArgs {
     )]
     pub timeout: u64,
 
+    /// Alle SEKUNDEN eine Lebenszeichen-Anfrage senden; kommt 3 Intervalle lang nichts an, gilt
+    /// die Verbindung als tot
+    #[arg(
+        long,
+        global = true,
+        value_name = "SEKUNDEN",
+        value_parser = clap::value_parser!(u64).range(1..=3600)
+    )]
+    pub keepalive: Option<u64>,
+
     /// Ausführlichere Ausgabe auf stderr
     #[arg(short, long, global = true)]
     pub verbose: bool,
@@ -69,6 +79,29 @@ pub enum Command {
         /// [benutzer@]host[:port]
         #[arg(value_name = "ZIEL")]
         target: Target,
+    },
+    /// Befehl auf dem Server ausführen; Ausgabe und Eingabe laufen live
+    ///
+    /// Die Wörter des Befehls werden wie bei ssh mit Leerzeichen verbunden und vom Shell des
+    /// Servers ausgewertet. Optionen müssen vor dem Befehl stehen. Der Exit-Code ist der des
+    /// Remote-Befehls (bei Signal 128+Nummer, 255 bei verlorener Verbindung).
+    Exec {
+        /// [benutzer@]host[:port]
+        #[arg(value_name = "ZIEL")]
+        target: Target,
+
+        /// stdin nicht weitergeben: Der Befehl sieht sofort EOF
+        #[arg(long)]
+        no_stdin: bool,
+
+        /// Befehl und Argumente
+        #[arg(
+            value_name = "BEFEHL",
+            required = true,
+            trailing_var_arg = true,
+            allow_hyphen_values = true
+        )]
+        command: Vec<String>,
     },
     /// Verbindung und Anmeldung prüfen
     Check {

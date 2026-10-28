@@ -121,7 +121,11 @@ pub async fn connect(global: &GlobalArgs, target: &Target) -> Result<Connected, 
     let (policy, known_path) = build_policy(global, target)?;
     let (check, outcome) = hostkeys::host_key_check(policy);
 
-    let config = Config::new(user.clone(), key, check).timeout(Duration::from_secs(global.timeout));
+    let mut config =
+        Config::new(user.clone(), key, check).timeout(Duration::from_secs(global.timeout));
+    if let Some(seconds) = global.keepalive {
+        config = config.keepalive(Duration::from_secs(seconds), 3);
+    }
     if global.verbose {
         eprintln!("Verbinde mit {} als {user} ...", target.display_addr());
     }
