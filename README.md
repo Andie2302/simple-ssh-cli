@@ -242,7 +242,7 @@ Die Tests der Shell laufen unter einem Pseudo-Terminal (`expectrl`).
 
 ## Abhängigkeiten und Lizenzen
 
-Alle 103 direkten und indirekten Abhängigkeiten des Programms stehen unter permissiven Lizenzen
+Alle Abhängigkeiten (127 Pakete laut `cargo metadata`, inklusive Plattform- und Test-Crates) stehen unter permissiven Lizenzen
 (überwiegend MIT und/oder Apache-2.0; dazu BSD-3-Clause, BSL-1.0, Unlicense, Unicode-3.0). Wo ein
 Crate mehrere Lizenzen zur Wahl anbietet (z.B. `r-efi`: auch LGPL), gilt die permissive Option.
 Prüfung: `cargo metadata` auswerten.
