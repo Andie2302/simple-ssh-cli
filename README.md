@@ -4,8 +4,8 @@ Kommandozeilenprogramm auf Basis von [simple-ssh-lib](https://github.com/Andie23
 Es soll vor allem eines: die Bibliothek **gegen echte SSH-Server** ausprobieren und prüfen –
 und nebenbei als schlanker SSH-Client taugen.
 
-> Status: Meilenstein 6 von 7. Aktuell gibt es `hostkey`, `check`, `exec`, `shell`, `sftp` und
-> `selftest`. Linux und macOS; Windows wird nicht unterstützt.
+> Status: Version 0.1.0, alle geplanten Befehle sind vorhanden (`hostkey`, `check`, `exec`, `shell`,
+> `sftp`, `selftest`). Linux und macOS; Windows wird nicht unterstützt.
 
 ## Was die Bibliothek (und damit dieses Programm) kann – und was nicht
 
@@ -20,6 +20,11 @@ gibt es eine klare Fehlermeldung statt eines stillen Fallbacks.
 ```sh
 cargo install --git https://github.com/Andie2302/simple-ssh-cli
 ```
+
+Fertige Binaries (Linux x86_64, macOS arm64) mit SHA256-Summen hängen an den
+[Releases](https://github.com/Andie2302/simple-ssh-cli/releases), sobald ein Versions-Tag `v*`
+gesetzt ist. Getestet wurde nur mit der zuletzt installierten stabilen Rust-Version; eine
+Mindestversion wird nicht zugesichert.
 
 ## Benutzung
 
@@ -204,6 +209,25 @@ Sie ist unabhängig von `~/.ssh/known_hosts`.
 
 Bei `exec` und `shell` gilt zusätzlich der Code des Remote-Programms, siehe oben.
 
+## Sicherheitsmodell
+
+* Der Host-Key wird **immer** geprüft, bevor das erste Byte eines Befehls fließt: bekannt in
+  `known_hosts`, per `--fingerprint` festgenagelt oder (mit `--accept-new`) erst nach erfolgreicher
+  Anmeldung gespeichert. Ein geänderter Key wird nie automatisch übernommen.
+* Die `known_hosts`-Datei dieses Programms wird nur angehängt, nie umgeschrieben (Datei 0600,
+  Ordner 0700).
+* Passphrasen kommen nie über Argumente, werden nach Gebrauch überschrieben und nicht ausgegeben.
+* Algorithmen sind fest; es gibt keine Verhandlung und keinen Fallback (siehe oben).
+* Das Programm ist ein Testwerkzeug für die Bibliothek, keine geprüfte Sicherheitssoftware.
+
+## Grenzen
+
+Kein Passwort-Login, kein Agent, kein Port-Forwarding, kein SCP; SFTP ohne Rekursion, Fortsetzen
+und Platzhalter; Windows nicht unterstützt. Auf macOS wird das Programm gebaut, die Tests laufen
+dort nicht automatisch. Eine Checkliste für alles, was Tests nicht abdecken (vim, tmux,
+Fenstergröße im Terminalemulator, echter Server), steht in
+[`docs/MANUELLER-TEST.md`](docs/MANUELLER-TEST.md).
+
 ## Tests
 
 ```sh
@@ -214,6 +238,14 @@ cargo test
 Die Integrationstests starten einen eigenen `sshd` auf `127.0.0.1` und rufen das Programm auf.
 Die Bibliothek ist auf einen festen Commit gepinnt (`Cargo.toml`).
 Ohne `sshd` überspringen sie sich.
+Die Tests der Shell laufen unter einem Pseudo-Terminal (`expectrl`).
+
+## Abhängigkeiten und Lizenzen
+
+Alle 103 direkten und indirekten Abhängigkeiten des Programms stehen unter permissiven Lizenzen
+(überwiegend MIT und/oder Apache-2.0; dazu BSD-3-Clause, BSL-1.0, Unlicense, Unicode-3.0). Wo ein
+Crate mehrere Lizenzen zur Wahl anbietet (z.B. `r-efi`: auch LGPL), gilt die permissive Option.
+Prüfung: `cargo metadata` auswerten.
 
 ## Lizenz
 
