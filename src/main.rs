@@ -9,8 +9,10 @@ mod connect;
 mod error;
 mod escape;
 mod exitcode;
+mod fmt;
 mod hostkeys;
 mod identity;
+mod sftp_ops;
 mod signals;
 mod target;
 mod term;
@@ -32,6 +34,9 @@ async fn run(cli: Cli) -> Result<i32, CliError> {
             no_stdin,
             command,
         } => commands::exec::run(&cli.global, target, *no_stdin, command).await,
+        Command::Sftp { target, action } => {
+            commands::sftp::run(&cli.global, target, action.as_ref()).await
+        }
         Command::Shell {
             target,
             no_escape,

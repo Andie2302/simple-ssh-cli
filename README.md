@@ -4,8 +4,7 @@ Kommandozeilenprogramm auf Basis von [simple-ssh-lib](https://github.com/Andie23
 Es soll vor allem eines: die Bibliothek **gegen echte SSH-Server** ausprobieren und prüfen –
 und nebenbei als schlanker SSH-Client taugen.
 
-> Status: Meilenstein 3 von 7. Aktuell gibt es `hostkey`, `check`, `exec` und `shell`. `sftp`
-> und ein eingebauter `selftest` folgen. Linux und macOS; Windows wird nicht unterstützt.
+> Status: Meilenstein 5 von 7. Aktuell gibt es `hostkey`, `check`, `exec`, `shell` und `sftp`. Ein eingebauter `selftest` folgen. Linux und macOS; Windows wird nicht unterstützt.
 
 ## Was die Bibliothek (und damit dieses Programm) kann – und was nicht
 
@@ -36,6 +35,12 @@ simple-ssh-cli exec anna@server.example 'tail -f /var/log/syslog'
 
 # Interaktive Shell mit echtem Terminal (Beenden: `exit` oder `~.` am Zeilenanfang)
 simple-ssh-cli shell anna@server.example
+
+# SFTP: Einzelbefehle und interaktive Sitzung
+simple-ssh-cli sftp anna@server.example ls -l /var/log
+simple-ssh-cli sftp anna@server.example get /var/log/syslog
+simple-ssh-cli sftp anna@server.example put backup.tar.gz /tmp/
+simple-ssh-cli sftp anna@server.example
 
 # Eingabe durchreichen
 tar czf - ordner | simple-ssh-cli exec anna@server.example 'tar xzf - -C /tmp'
@@ -106,6 +111,34 @@ Eingabe wird Strg-D gesendet, sobald die Shell ruhig ist. Exit-Code wie bei `exe
 
 Manuell zu prüfen (nicht automatisiert): `vim`, `top`, `less`, `htop`, `tmux`, Strg-Z/`fg`,
 Einfügen mit Bracketed Paste und die Fenstergröße in einem echten Terminalemulator.
+
+### `sftp`
+
+Ohne Unterbefehl startet eine interaktive Sitzung (`sftp>`), sonst wird genau ein Befehl
+ausgeführt:
+
+| Befehl | Wirkung |
+|---|---|
+| `ls [-l] [-a] [pfad]` | auflisten (`-l`: Rechte, Besitzer, Größe, Zeit in UTC) |
+| `get <remote> [lokal]` | herunterladen; `-` als Ziel schreibt nach stdout |
+| `put <lokal> [remote]` | hochladen (Modus der Datei bleibt); `-` liest von stdin |
+| `rm <pfade…>`, `mkdir`, `rmdir` | löschen / Verzeichnis anlegen / leeres Verzeichnis löschen |
+| `mv <von> <nach>` | umbenennen oder in ein Verzeichnis verschieben (überschreibt nichts) |
+| `stat <pfad>`, `chmod <oktal> <pfad>` | Attribute anzeigen / Modus setzen |
+| nur in der Sitzung | `cd`, `pwd`, `lcd`, `lpwd`, `help`, `exit` (`quit`, `bye`, Strg-D) |
+
+Übertragungen laufen als gepipelinter Strom (bis zu 16 × 32 KiB gleichzeitig) und brauchen
+keinen Speicher nach Dateigröße. Auf einem Terminal zeigt stderr den Fortschritt, am Ende steht
+immer eine Zusammenfassung mit Durchsatz. Downloads landen erst in `<ziel>.part` und werden nach
+Erfolg umbenannt; bei einem Fehler wird die Teildatei gelöscht. Uploads schreiben direkt ins Ziel
+(das Protokoll hat kein atomares Ersetzen). Grenzen: keine rekursiven Übertragungen, kein
+Fortsetzen, keine Platzhalter. Leerzeichen in Namen: `"mit Leerzeichen"` oder `\ `.
+
+In der Sitzung zeigt Strg-C am Prompt nur eine neue Zeile, bricht während einer Übertragung
+diese ab, und Tab vervollständigt Befehlsnamen. Wird die Eingabe nicht von einem Terminal
+gelesen (Skript über Pipe), bricht der erste Fehler die Sitzung ab (Exit-Code 1, bei falscher
+Bedienung 64). Fehlt das SFTP-Subsystem auf dem Server, endet der Aufruf mit einer klaren
+Meldung; SCP wird nicht als Ersatz versucht.
 
 ### Passphrase
 

@@ -121,6 +121,18 @@ pub enum Command {
         #[arg(long, value_name = "ZEICHEN", default_value = "~", value_parser = parse_escape_char)]
         escape_char: u8,
     },
+    /// SFTP: Einzelbefehl ausführen, ohne Unterbefehl interaktive Sitzung (`sftp>`)
+    ///
+    /// Übertragungen sind gepipelinet und laufen als Strom (kein Speicherbedarf nach Dateigröße),
+    /// mit Fortschritt auf stderr. Verzeichnisse werden nicht rekursiv übertragen.
+    Sftp {
+        /// [benutzer@]host[:port]
+        #[arg(value_name = "ZIEL")]
+        target: Target,
+
+        #[command(subcommand)]
+        action: Option<SftpAction>,
+    },
     /// Verbindung und Anmeldung prüfen
     Check {
         /// [benutzer@]host[:port]
@@ -135,4 +147,58 @@ fn parse_escape_char(s: &str) -> Result<u8, String> {
         (Some(c), None) if c.is_ascii_punctuation() => Ok(c as u8),
         _ => Err("erwartet wird genau ein ASCII-Satzzeichen".to_string()),
     }
+}
+
+/// SFTP-Befehle (einzeln aufrufbar und in der interaktiven Sitzung).
+#[derive(Debug, Clone, Subcommand)]
+pub enum SftpAction {
+    /// Verzeichnis oder Datei auflisten
+    Ls {
+        /// Ausführliches Format (Rechte, Besitzer, Größe, Zeit in UTC)
+        #[arg(short = 'l')]
+        long: bool,
+        /// Auch Namen mit führendem Punkt zeigen
+        #[arg(short = 'a')]
+        all: bool,
+        /// Pfad auf dem Server [Standard: aktuelles Verzeichnis]
+        path: Option<String>,
+    },
+    /// Datei herunterladen (`-` als Ziel schreibt nach stdout)
+    Get {
+        remote: String,
+        /// Lokales Ziel [Standard: Name der Datei im aktuellen Verzeichnis]
+        local: Option<PathBuf>,
+    },
+    /// Datei hochladen (`-` als Quelle liest von stdin; dann ist das Ziel Pflicht)
+    Put {
+        local: PathBuf,
+        /// Ziel auf dem Server [Standard: Name der Datei]
+        remote: Option<String>,
+    },
+    /// Dateien löschen
+    Rm {
+        #[arg(required = true)]
+        paths: Vec<String>,
+    },
+    /// Verzeichnis anlegen
+    Mkdir { path: String },
+    /// Leeres Verzeichnis löschen
+    Rmdir { path: String },
+    /// Umbenennen oder verschieben (ein vorhandenes Ziel wird nicht überschrieben)
+    Mv { from: String, to: String },
+    /// Attribute anzeigen
+    Stat { path: String },
+    /// Modus setzen (oktal, z.B. 644)
+    Chmod {
+        #[arg(value_parser = parse_mode)]
+        mode: u32,
+        path: String,
+    },
+}
+
+fn parse_mode(s: &str) -> Result<u32, String> {
+    u32::from_str_radix(s, 8)
+        .ok()
+        .filter(|m| *m <= 0o7777)
+        .ok_or_else(|| "erwartet wird ein oktaler Modus bis 7777, z.B. 644".to_string())
 }

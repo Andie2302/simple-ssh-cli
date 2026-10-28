@@ -14,8 +14,9 @@ exclude = ["/.github"]
 clap = { version = "4.6.7", features = ["derive"] }
 crossterm = { version = "0.29.0", default-features = false }
 rpassword = "7.5.4"
-simple-ssh-lib = { git = "https://github.com/Andie2302/simple-ssh-lib", rev = "b79833f6be97e7900582a3b5a49a9cf871fc10d2", version = "0.1.0" }
-tokio = { version = "1.54.1", features = ["rt-multi-thread", "macros", "net", "time", "io-util", "io-std", "signal"] }
+rustyline = "19.0.0"
+simple-ssh-lib = { git = "https://github.com/Andie2302/simple-ssh-lib", rev = "57e66f87402e6db401d4c6e98fdb5be0f75a9c08", version = "0.1.0" }
+tokio = { version = "1.54.1", features = ["rt-multi-thread", "macros", "net", "time", "io-util", "io-std", "signal", "fs", "sync"] }
 zeroize = "1.9.1"
 
 # Kryptografie-Crates auch im Debug-Build optimieren, damit Tests nicht unnötig langsam sind.
