@@ -112,6 +112,15 @@ pub fn translate(
 
 /// Verbindet und meldet an. Ein neuer Host wird bei `--accept-new` erst nach der Anmeldung gespeichert.
 pub async fn connect(global: &GlobalArgs, target: &Target) -> Result<Connected, CliError> {
+    connect_with(global, target, |config| config).await
+}
+
+/// Wie [`connect`], mit Anpassung der Konfiguration (z.B. Schlüsselwechsel-Schwellen im Selbsttest).
+pub async fn connect_with(
+    global: &GlobalArgs,
+    target: &Target,
+    tweak: impl FnOnce(Config) -> Config,
+) -> Result<Connected, CliError> {
     let user = target.resolve_user()?;
     let identity_path = match &global.identity {
         Some(p) => p.clone(),
@@ -126,6 +135,7 @@ pub async fn connect(global: &GlobalArgs, target: &Target) -> Result<Connected, 
     if let Some(seconds) = global.keepalive {
         config = config.keepalive(Duration::from_secs(seconds), 3);
     }
+    let config = tweak(config);
     if global.verbose {
         eprintln!("Verbinde mit {} als {user} ...", target.display_addr());
     }

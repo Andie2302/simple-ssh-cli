@@ -4,7 +4,8 @@ Kommandozeilenprogramm auf Basis von [simple-ssh-lib](https://github.com/Andie23
 Es soll vor allem eines: die Bibliothek **gegen echte SSH-Server** ausprobieren und prüfen –
 und nebenbei als schlanker SSH-Client taugen.
 
-> Status: Meilenstein 5 von 7. Aktuell gibt es `hostkey`, `check`, `exec`, `shell` und `sftp`. Ein eingebauter `selftest` folgen. Linux und macOS; Windows wird nicht unterstützt.
+> Status: Meilenstein 6 von 7. Aktuell gibt es `hostkey`, `check`, `exec`, `shell`, `sftp` und
+> `selftest`. Linux und macOS; Windows wird nicht unterstützt.
 
 ## Was die Bibliothek (und damit dieses Programm) kann – und was nicht
 
@@ -41,6 +42,10 @@ simple-ssh-cli sftp anna@server.example ls -l /var/log
 simple-ssh-cli sftp anna@server.example get /var/log/syslog
 simple-ssh-cli sftp anna@server.example put backup.tar.gz /tmp/
 simple-ssh-cli sftp anna@server.example
+
+# Alles gegen einen echten Server prüfen (PASS/FAIL je Prüfung), auch als JSON
+simple-ssh-cli selftest anna@server.example
+simple-ssh-cli selftest anna@server.example --json > ergebnis.json
 
 # Eingabe durchreichen
 tar czf - ordner | simple-ssh-cli exec anna@server.example 'tar xzf - -C /tmp'
@@ -139,6 +144,31 @@ diese ab, und Tab vervollständigt Befehlsnamen. Wird die Eingabe nicht von eine
 gelesen (Skript über Pipe), bricht der erste Fehler die Sitzung ab (Exit-Code 1, bei falscher
 Bedienung 64). Fehlt das SFTP-Subsystem auf dem Server, endet der Aufruf mit einer klaren
 Meldung; SCP wird nicht als Ersatz versucht.
+
+### `selftest`
+
+Prüft die Bibliothek systematisch gegen den angegebenen Server und gibt je Prüfung PASS, FAIL oder
+SKIP mit Dauer und Detail aus. Exit-Code 1, wenn eine Prüfung fehlschlägt.
+
+| Prüfung | Was geprüft wird |
+|---|---|
+| `connection` | Banner, Host-Key, Dauer für Verbindungsaufbau und Anmeldung |
+| `hostkey-pin` | ein falscher `--fingerprint` wird abgelehnt (Exit 3) |
+| `exec` | Ausgabe, getrennte stderr, Exit-Code, Signal-Ende, Befehl nicht gefunden (127), stdin, leere Ausgabe |
+| `bulk-data` | `--size` Daten durch `cat` hin und zurück, jedes Byte verglichen (Flow-Control in beide Richtungen), Durchsatz |
+| `concurrency` | 8 parallele Befehle brauchen deutlich weniger als die Summe; ein per Frist abgebrochener Aufruf lässt die Sitzung nutzbar |
+| `shell` | PTY, Rechnung, Größenänderung (`stty size`), `exit 5` → Status 5 |
+| `sftp` | `--size` schreiben/lesen als Strom mit Byte-Vergleich, chmod, 200 Einträge, rename, Fehlerfälle, 8 parallele Operationen; ohne SFTP-Subsystem SKIP |
+| `rekey` | zweite Verbindung mit Schwelle 256 KiB, 8 MiB hin und zurück, ≥ 5 Schlüsselwechsel, Daten intakt |
+| `keepalive` | 3 s Leerlauf mit Keepalive (1 s × 3) bleibt gesund |
+| `conn-loss` | nur mit `--destructive`: ein Verbindungsabbruch (`kill -9` der eigenen Sitzung) wird gemeldet statt zu hängen |
+
+Optionen: `--size <größe>` (Standard 20MiB), `--workdir <pfad>` (Standard `$HOME`), `--json`,
+`--destructive`. Geschrieben wird nur in einen Ordner `.selftest-<id>` darunter; er wird am Ende
+gelöscht (gelöscht wird nur, was diesen Namen trägt). Mit `--json` steht nur das Ergebnis auf
+stdout, die Fortschrittszeilen auf stderr. Voraussetzung auf dem Server ist eine POSIX-Shell.
+*Nicht prüfbar von außen:* ein vom Server ausgelöster Schlüsselwechsel (hängt von dessen
+`RekeyLimit` ab).
 
 ### Passphrase
 

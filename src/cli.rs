@@ -133,6 +133,33 @@ pub enum Command {
         #[command(subcommand)]
         action: Option<SftpAction>,
     },
+    /// Bibliothek systematisch gegen den Server prüfen (PASS/FAIL je Prüfung, optional als JSON)
+    ///
+    /// Prüft Verbindung, Host-Key-Pinning, exec, große Datenmengen, Parallelität, Shell, SFTP,
+    /// Schlüsselwechsel und Keepalive. Schreibt nur in einen eigenen Ordner `.selftest-<id>`
+    /// (Standard: im Home-Verzeichnis), der am Ende gelöscht wird. Exit-Code 1, wenn eine
+    /// Prüfung fehlschlägt.
+    Selftest {
+        /// [benutzer@]host[:port]
+        #[arg(value_name = "ZIEL")]
+        target: Target,
+
+        /// Datenmenge für die Übertragungsprüfungen (z.B. 512KiB, 20MiB, 1GiB)
+        #[arg(long, value_name = "GRÖSSE", default_value = "20MiB", value_parser = parse_size)]
+        size: u64,
+
+        /// Ordner auf dem Server, in dem der Arbeitsordner angelegt wird [Standard: $HOME]
+        #[arg(long, value_name = "PFAD")]
+        workdir: Option<String>,
+
+        /// Ergebnis als JSON auf stdout (Fortschrittszeilen gehen nach stderr)
+        #[arg(long)]
+        json: bool,
+
+        /// Auch die Prüfung des Verbindungsabbruchs ausführen (beendet eine eigene Sitzung per kill -9)
+        #[arg(long)]
+        destructive: bool,
+    },
     /// Verbindung und Anmeldung prüfen
     Check {
         /// [benutzer@]host[:port]
@@ -201,4 +228,51 @@ fn parse_mode(s: &str) -> Result<u32, String> {
         .ok()
         .filter(|m| *m <= 0o7777)
         .ok_or_else(|| "erwartet wird ein oktaler Modus bis 7777, z.B. 644".to_string())
+}
+
+/// `20MiB`, `512k`, `1GiB`, `1048576` → Bytes (64 KiB bis 2 GiB).
+pub fn parse_size(s: &str) -> Result<u64, String> {
+    let lower = s.trim().to_ascii_lowercase();
+    let split = lower
+        .find(|c: char| !c.is_ascii_digit())
+        .unwrap_or(lower.len());
+    let (digits, unit) = lower.split_at(split);
+    let number: u64 = digits
+        .parse()
+        .map_err(|_| format!("`{s}` ist keine Größe (Beispiel: 20MiB)"))?;
+    let factor: u64 = match unit {
+        "" | "b" => 1,
+        "k" | "kb" | "kib" => 1024,
+        "m" | "mb" | "mib" => 1024 * 1024,
+        "g" | "gb" | "gib" => 1024 * 1024 * 1024,
+        _ => {
+            return Err(format!(
+                "unbekannte Einheit `{unit}` (erlaubt: KiB, MiB, GiB)"
+            ));
+        }
+    };
+    let bytes = number
+        .checked_mul(factor)
+        .ok_or_else(|| "Größe zu groß".to_string())?;
+    if !(64 * 1024..=2 * 1024 * 1024 * 1024).contains(&bytes) {
+        return Err("erlaubt sind 64KiB bis 2GiB".to_string());
+    }
+    Ok(bytes)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sizes_parse() {
+        assert_eq!(parse_size("20MiB"), Ok(20 * 1024 * 1024));
+        assert_eq!(parse_size("512k"), Ok(512 * 1024));
+        assert_eq!(parse_size("1GiB"), Ok(1024 * 1024 * 1024));
+        assert_eq!(parse_size("65536"), Ok(65536));
+        assert!(parse_size("1KiB").is_err());
+        assert!(parse_size("3GiB").is_err());
+        assert!(parse_size("abc").is_err());
+        assert!(parse_size("5TB").is_err());
+    }
 }

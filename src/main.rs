@@ -12,6 +12,7 @@ mod exitcode;
 mod fmt;
 mod hostkeys;
 mod identity;
+mod selftest;
 mod sftp_ops;
 mod signals;
 mod target;
@@ -36,6 +37,21 @@ async fn run(cli: Cli) -> Result<i32, CliError> {
         } => commands::exec::run(&cli.global, target, *no_stdin, command).await,
         Command::Sftp { target, action } => {
             commands::sftp::run(&cli.global, target, action.as_ref()).await
+        }
+        Command::Selftest {
+            target,
+            size,
+            workdir,
+            json,
+            destructive,
+        } => {
+            let options = selftest::Options {
+                size: *size,
+                workdir: workdir.clone(),
+                json: *json,
+                destructive: *destructive,
+            };
+            selftest::run(&cli.global, target, &options).await
         }
         Command::Shell {
             target,
