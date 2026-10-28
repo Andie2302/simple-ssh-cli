@@ -11,24 +11,8 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use crate::cli::GlobalArgs;
 use crate::connect;
 use crate::error::CliError;
-use crate::signals;
+use crate::exitcode::{BROKEN_PIPE, INTERRUPTED, LOST, exit_code};
 use crate::target::Target;
-
-/// Exit-Code, wenn die Verbindung verloren ging oder kein Status vorliegt (wie ssh).
-const LOST: i32 = 255;
-/// 128 + SIGPIPE: lokales stdout wurde geschlossen (`… | head`).
-const BROKEN_PIPE: i32 = 141;
-/// 128 + SIGINT.
-const INTERRUPTED: i32 = 130;
-
-/// Übersetzt den Status des Remote-Befehls in einen Exit-Code.
-pub fn exit_code(status: &ExitStatus) -> i32 {
-    match status {
-        ExitStatus::Code(n) => i32::try_from(*n).map_or(LOST, |n| n.clamp(0, 255)),
-        ExitStatus::Signal(name) => signals::number(name).map_or(LOST, |n| 128 + n),
-        _ => LOST,
-    }
-}
 
 fn lost(e: &Error) -> CliError {
     CliError::new(LOST, format!("Verbindung zum Server verloren: {e}"))
@@ -142,22 +126,5 @@ fn local_write_error(e: std::io::Error) -> CliError {
         CliError::general(format!(
             "Schreiben auf die lokale Ausgabe fehlgeschlagen: {e}"
         ))
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn remote_codes_pass_through_and_signals_follow_the_shell_convention() {
-        assert_eq!(exit_code(&ExitStatus::Code(0)), 0);
-        assert_eq!(exit_code(&ExitStatus::Code(7)), 7);
-        assert_eq!(exit_code(&ExitStatus::Code(255)), 255);
-        assert_eq!(exit_code(&ExitStatus::Code(300)), 255);
-        assert_eq!(exit_code(&ExitStatus::Signal("KILL".into())), 137);
-        assert_eq!(exit_code(&ExitStatus::Signal("SIGTERM".into())), 143);
-        assert_eq!(exit_code(&ExitStatus::Signal("WHATEVER".into())), 255);
-        assert_eq!(exit_code(&ExitStatus::Unknown), 255);
     }
 }

@@ -7,10 +7,13 @@ mod cli;
 mod commands;
 mod connect;
 mod error;
+mod escape;
+mod exitcode;
 mod hostkeys;
 mod identity;
 mod signals;
 mod target;
+mod term;
 
 use clap::Parser;
 
@@ -29,6 +32,11 @@ async fn run(cli: Cli) -> Result<i32, CliError> {
             no_stdin,
             command,
         } => commands::exec::run(&cli.global, target, *no_stdin, command).await,
+        Command::Shell {
+            target,
+            no_escape,
+            escape_char,
+        } => commands::shell::run(&cli.global, target, !*no_escape, *escape_char).await,
     }
 }
 

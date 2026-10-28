@@ -103,10 +103,36 @@ pub enum Command {
         )]
         command: Vec<String>,
     },
+    /// Interaktive Shell mit echtem Terminal
+    ///
+    /// Am Zeilenanfang gilt das Escape-Zeichen (Standard `~`): `~.` trennt die Verbindung,
+    /// `~~` sendet ein `~`, `~?` zeigt eine Hilfe. Der Exit-Code ist der der Remote-Shell
+    /// (bei Signal 128+Nummer, 255 bei getrennter oder verlorener Verbindung).
+    Shell {
+        /// [benutzer@]host[:port]
+        #[arg(value_name = "ZIEL")]
+        target: Target,
+
+        /// Escape-Zeichen abschalten
+        #[arg(long)]
+        no_escape: bool,
+
+        /// Anderes Escape-Zeichen (ein ASCII-Satzzeichen)
+        #[arg(long, value_name = "ZEICHEN", default_value = "~", value_parser = parse_escape_char)]
+        escape_char: u8,
+    },
     /// Verbindung und Anmeldung prüfen
     Check {
         /// [benutzer@]host[:port]
         #[arg(value_name = "ZIEL")]
         target: Target,
     },
+}
+
+fn parse_escape_char(s: &str) -> Result<u8, String> {
+    let mut chars = s.chars();
+    match (chars.next(), chars.next()) {
+        (Some(c), None) if c.is_ascii_punctuation() => Ok(c as u8),
+        _ => Err("erwartet wird genau ein ASCII-Satzzeichen".to_string()),
+    }
 }

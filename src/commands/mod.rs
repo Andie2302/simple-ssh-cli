@@ -3,3 +3,4 @@
 pub mod check;
 pub mod exec;
 pub mod hostkey;
+pub mod shell;
